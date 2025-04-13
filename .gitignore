@@ -36,5 +36,4 @@ target/
 **/*.rs.bk
 
 # Distribution
-dist/ 
-client/package-lock.json
+dist/
