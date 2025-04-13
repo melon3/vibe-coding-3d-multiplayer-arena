@@ -16,7 +16,7 @@ interface HexGridProps {
 }
 
 export const HexGrid: React.FC<HexGridProps> = ({
-  gridRadius = 20,
+  gridRadius = 25,
   position = [0, 0, 0],
   baseScaleFactor = 0.25,
   pathScaleFactor = 0.02,
@@ -67,19 +67,98 @@ export const HexGrid: React.FC<HexGridProps> = ({
       _createHexGeometry(size: number) {
         const geometry = new THREE.BufferGeometry();
         const vertices = [];
-        const colors = [];
+        const indices = [];
 
+        // Outer hex vertices (border)
         for (let i = 0; i < 6; i++) {
           const angle = (i * 60 + 30) * Math.PI / 180;
           const x = size * Math.cos(angle);
           const z = size * Math.sin(angle);
           vertices.push(x, 0, z);
-          colors.push(1, 1, 1);
+        }
+
+        // Inner hex vertices (fill)
+        const innerSize = size * 0.9; // Slightly smaller for border thickness
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = innerSize * Math.cos(angle);
+          const z = innerSize * Math.sin(angle);
+          vertices.push(x, 0, z);
+        }
+
+        // Indices for border (outer to inner)
+        for (let i = 0; i < 6; i++) {
+          const next = (i + 1) % 6;
+          indices.push(i, next, i + 6);
+          indices.push(next, next + 6, i + 6);
+        }
+
+        // Indices for inner hex fill
+        for (let i = 1; i < 5; i++) {
+          indices.push(6, 6 + i, 6 + ((i + 1) % 6));
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        const indices = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5];
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        return geometry;
+      }
+
+      _createHexFillGeometry(size: number) {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+
+        // Inner hex vertices (fill)
+        const innerSize = size * 0.9; // Slightly smaller for border thickness
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = innerSize * Math.cos(angle);
+          const z = innerSize * Math.sin(angle);
+          vertices.push(x, 0, z);
+        }
+
+        // Indices for inner hex fill
+        for (let i = 1; i < 5; i++) {
+          indices.push(0, i, ((i + 1) % 6));
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        return geometry;
+      }
+
+      _createHexBorderGeometry(size: number) {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+
+        // Outer hex vertices (border)
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = size * Math.cos(angle);
+          const z = size * Math.sin(angle);
+          vertices.push(x, 0, z);
+        }
+
+        // Inner hex vertices
+        const innerSize = size * 0.9; // Slightly smaller for border thickness
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = innerSize * Math.cos(angle);
+          const z = innerSize * Math.sin(angle);
+          vertices.push(x, 0, z);
+        }
+
+        // Indices for border (outer to inner)
+        for (let i = 0; i < 6; i++) {
+          const next = (i + 1) % 6;
+          indices.push(i, next, i + 6);
+          indices.push(next, next + 6, i + 6);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
         return geometry;
@@ -92,12 +171,14 @@ export const HexGrid: React.FC<HexGridProps> = ({
       createHexGrid() {
         const size = 3;
         const radius = this.gridRadius;
-        const hexGeometry = this._createHexGeometry(size);
+        const hexFillGeometry = this._createHexFillGeometry(size);
+        const hexBorderGeometry = this._createHexBorderGeometry(size);
 
         const gray = new THREE.Color(this.mapColor.r, this.mapColor.g, this.mapColor.b);
         const baseColors = this.baseColors.map(c => new THREE.Color(c.r, c.g, c.b));
         const arenaColor = new THREE.Color(this.arenaColor.r, this.arenaColor.g, this.arenaColor.b);
         const pathColor = new THREE.Color(this.pathColor.r, this.pathColor.g, this.pathColor.b);
+        const tempBorderColor = new THREE.Color();
 
         const arenaRadius = Math.floor(radius * this.arenaScaleFactor || radius * 0.5);
         const baseRadius = Math.floor(radius * this.baseScaleFactor || radius * 0.3);
@@ -174,77 +255,38 @@ export const HexGrid: React.FC<HexGridProps> = ({
         }
 
         const dummy = new THREE.Object3D();
-        const sharedMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+        const fillMaterial = new THREE.MeshBasicMaterial({ vertexColors: false });
+        const borderMaterial = new THREE.MeshBasicMaterial({ vertexColors: false });
         layers.forEach((layer, index) => {
           if (layer.cells.length === 0) return;
 
-          const hexMesh = new THREE.InstancedMesh(hexGeometry, sharedMaterial, layer.cells.length);
+          const hexFillMesh = new THREE.InstancedMesh(hexFillGeometry, fillMaterial, layer.cells.length);
+          const hexBorderMesh = new THREE.InstancedMesh(hexBorderGeometry, borderMaterial, layer.cells.length);
 
           layer.cells.forEach((cell: any, i: number) => {
             dummy.position.copy(cell.position);
             dummy.rotation.x = Math.PI;
             dummy.updateMatrix();
-            hexMesh.setMatrixAt(i, dummy.matrix);
-            hexMesh.setColorAt(i, cell.color);
+            hexFillMesh.setMatrixAt(i, dummy.matrix);
+            hexFillMesh.setColorAt(i, cell.color);
+            hexBorderMesh.setMatrixAt(i, dummy.matrix);
+            // Set border color
+            const borderColor = new THREE.Color();
+            borderColor.copy(cell.color);
+            if (this.borderColorFactor < 0) {
+              borderColor.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
+            } else {
+              borderColor.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
+            }
+            hexBorderMesh.setColorAt(i, borderColor);
           });
 
-          hexMesh.instanceMatrix.needsUpdate = true;
-          hexMesh.instanceColor.needsUpdate = true;
-          this.scene.add(hexMesh);
-
-          const maxLines = 5000;
-          const linePositions = [];
-          const lineColors = [];
-          const edgeSet = new Set();
-
-          for (let i = 0; i < layer.cells.length && linePositions.length < maxLines * 6; i++) {
-            const cell = layer.cells[i];
-            const matrix = new THREE.Matrix4();
-            hexMesh.getMatrixAt(i, matrix);
-            const worldVertices = [];
-
-            for (let j = 0; j < 6; j++) {
-              const localVertex = new THREE.Vector3(
-                hexGeometry.attributes.position.array[j * 3],
-                hexGeometry.attributes.position.array[j * 3 + 1],
-                hexGeometry.attributes.position.array[j * 3 + 2]
-              );
-              const worldVertex = localVertex.applyMatrix4(matrix);
-              worldVertices.push(worldVertex);
-            }
-
-            for (let dir = 0; dir < 6; dir++) {
-              const p1 = worldVertices[dir];
-              const p2 = worldVertices[(dir + 1) % 6];
-              const key = p1.x < p2.x ?
-                `${p1.x.toFixed(3)}_${p1.z.toFixed(3)}_${p2.x.toFixed(3)}_${p2.z.toFixed(3)}` :
-                `${p2.x.toFixed(3)}_${p2.z.toFixed(3)}_${p1.x.toFixed(3)}_${p1.z.toFixed(3)}`;
-
-              if (!edgeSet.has(key)) {
-                edgeSet.add(key);
-                linePositions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-                const borderColor = cell.color.clone();
-                if (this.borderColorFactor < 0) {
-                  borderColor.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
-                } else {
-                  borderColor.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
-                }
-                lineColors.push(borderColor.r, borderColor.g, borderColor.b,
-                                borderColor.r, borderColor.g, borderColor.b);
-              }
-              if (linePositions.length >= maxLines * 6) break;
-            }
-            if (linePositions.length >= maxLines * 6) break;
-          }
-
-          if (linePositions.length > 0) {
-            const lineGeometry = new THREE.BufferGeometry();
-            lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-            lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
-            const lineMaterial = new THREE.LineBasicMaterial({ vertexColors: true });
-            const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
-            this.scene.add(lines);
-          }
+          hexFillMesh.instanceMatrix.needsUpdate = true;
+          hexFillMesh.instanceColor.needsUpdate = true;
+          hexBorderMesh.instanceMatrix.needsUpdate = true;
+          hexBorderMesh.instanceColor.needsUpdate = true;
+          this.scene.add(hexFillMesh);
+          this.scene.add(hexBorderMesh);
         });
       }
 
