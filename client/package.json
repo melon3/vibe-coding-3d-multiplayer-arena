@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@clockworklabs/spacetimedb-sdk": "^1.0.1",
+    "@clockworklabs/spacetimedb-sdk": "^1.0.3",
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.1.2",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "three": "^0.175.0"
   },
   "devDependencies": {
@@ -29,6 +29,6 @@
     "globals": "^15.15.0",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.24.1",
-    "vite": "^6.2.0"
+    "vite": "^6.2.6"
   }
 }

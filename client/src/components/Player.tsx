@@ -225,13 +225,18 @@ export const Player: React.FC<PlayerProps> = ({
           
           // --- TRY AGAIN: Traverse to remove embedded lights --- 
           try { 
+            const lightsToRemove = [];
             console.log(`[Player Model Effect ${playerData.username}] Traversing loaded FBX to find embedded lights...`);
             fbx.traverse((child) => {
               if (child && child instanceof THREE.Light) { 
-                // --- LOGGING ADDED HERE ---
-                console.log(`[Player Model Effect ${playerData.username}] --- FOUND AND REMOVING EMBEDDED LIGHT --- Name: ${child.name || 'Unnamed'}, Type: ${child.type}`);
-                child.removeFromParent();
+                lightsToRemove.push(child);
               }
+            });
+            
+            // Remove lights outside of traversal
+            lightsToRemove.forEach((light) => {
+              console.log(`[Player Model Effect ${playerData.username}] --- FOUND AND REMOVING EMBEDDED LIGHT --- Name: ${light.name || 'Unnamed'}, Type: ${light.type}`);
+              light.removeFromParent();
             });
           } catch (traverseError) {
              console.error(`[Player Model Effect ${playerData.username}] Error during fbx.traverse for light removal:`, traverseError);
