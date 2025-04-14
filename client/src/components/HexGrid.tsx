@@ -64,10 +64,11 @@ export const HexGrid: React.FC<HexGridProps> = ({
         this.mapColor = mapColor;
       }
 
-      _createHexGeometry(size: number) {
+      _createHexGeometry(size: number, borderColor: THREE.Color) {
         const geometry = new THREE.BufferGeometry();
         const vertices = [];
         const indices = [];
+        const colors = [];
 
         // Outer hex vertices (border)
         for (let i = 0; i < 6; i++) {
@@ -75,15 +76,17 @@ export const HexGrid: React.FC<HexGridProps> = ({
           const x = size * Math.cos(angle);
           const z = size * Math.sin(angle);
           vertices.push(x, 0, z);
+          colors.push(borderColor.r, borderColor.g, borderColor.b);
         }
 
         // Inner hex vertices (fill)
-        const innerSize = size * 0.9; // Slightly smaller for border thickness
+        const innerSize = size * 0.99; // Reduced from 0.9 for sharper borders
         for (let i = 0; i < 6; i++) {
           const angle = (i * 60 + 30) * Math.PI / 180;
           const x = innerSize * Math.cos(angle);
           const z = innerSize * Math.sin(angle);
           vertices.push(x, 0, z);
+          colors.push(1, 1, 1); // Fill color placeholder
         }
 
         // Indices for border (outer to inner)
@@ -99,6 +102,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
         return geometry;
@@ -171,14 +175,47 @@ export const HexGrid: React.FC<HexGridProps> = ({
       createHexGrid() {
         const size = 3;
         const radius = this.gridRadius;
-        const hexFillGeometry = this._createHexFillGeometry(size);
-        const hexBorderGeometry = this._createHexBorderGeometry(size);
 
         const gray = new THREE.Color(this.mapColor.r, this.mapColor.g, this.mapColor.b);
         const baseColors = this.baseColors.map(c => new THREE.Color(c.r, c.g, c.b));
         const arenaColor = new THREE.Color(this.arenaColor.r, this.arenaColor.g, this.arenaColor.b);
         const pathColor = new THREE.Color(this.pathColor.r, this.pathColor.g, this.pathColor.b);
-        const tempBorderColor = new THREE.Color();
+
+        // Calculate border colors for each layer
+        const grayBorder = gray.clone();
+        if (this.borderColorFactor < 0) {
+          grayBorder.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
+        } else {
+          grayBorder.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
+        }
+
+        const pathBorder = pathColor.clone();
+        if (this.borderColorFactor < 0) {
+          pathBorder.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
+        } else {
+          pathBorder.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
+        }
+
+        const arenaBorder = arenaColor.clone();
+        if (this.borderColorFactor < 0) {
+          arenaBorder.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
+        } else {
+          arenaBorder.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
+        }
+
+        // Create geometries with pre-set border colors
+        const grayHexGeometry = this._createHexGeometry(size, grayBorder);
+        const pathHexGeometry = this._createHexGeometry(size, pathBorder);
+        const arenaHexGeometry = this._createHexGeometry(size, arenaBorder);
+        const baseHexGeometries = baseColors.map(color => {
+          const borderColor = color.clone();
+          if (this.borderColorFactor < 0) {
+            borderColor.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
+          } else {
+            borderColor.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
+          }
+          return this._createHexGeometry(size, borderColor);
+        });
 
         const arenaRadius = Math.floor(radius * this.arenaScaleFactor || radius * 0.5);
         const baseRadius = Math.floor(radius * this.baseScaleFactor || radius * 0.3);
@@ -229,10 +266,10 @@ export const HexGrid: React.FC<HexGridProps> = ({
         };
 
         const layers = [
-          { name: 'empty', color: gray, cells: [] },
-          { name: 'paths', color: pathColor, cells: [] },
-          { name: 'bases', color: baseColors, cells: [] },
-          { name: 'arena', color: arenaColor, cells: [] }
+          { name: 'empty', color: gray, cells: [], geometry: grayHexGeometry },
+          { name: 'paths', color: pathColor, cells: [], geometry: pathHexGeometry },
+          { name: 'bases', color: baseColors, cells: [], geometry: baseHexGeometries },
+          { name: 'arena', color: arenaColor, cells: [], geometry: arenaHexGeometry }
         ];
 
         for (let q = -radius; q <= radius; q++) {
@@ -242,8 +279,8 @@ export const HexGrid: React.FC<HexGridProps> = ({
             const position = new THREE.Vector3(x, 0, z);
 
             const baseCheck = isInBase(q, r);
-            if (baseCheck.isBase) {
-              layers[2].cells.push({ q, r, position, color: baseColors[baseCheck.baseIndex] });
+            if (baseCheck.isBase && baseCheck.baseIndex >= 0 && baseCheck.baseIndex < baseColors.length) {
+              layers[2].cells.push({ q, r, position, color: baseColors[baseCheck.baseIndex], baseIndex: baseCheck.baseIndex });
             } else if (isInArena(q, r)) {
               layers[3].cells.push({ q, r, position, color: arenaColor });
             } else if (isOnPath(q, r)) {
@@ -255,45 +292,58 @@ export const HexGrid: React.FC<HexGridProps> = ({
         }
 
         const dummy = new THREE.Object3D();
-        const fillMaterial = new THREE.MeshBasicMaterial({ vertexColors: false });
-        const borderMaterial = new THREE.MeshBasicMaterial({ vertexColors: false });
+        const material = new THREE.MeshBasicMaterial({ vertexColors: true });
         layers.forEach((layer, index) => {
           if (layer.cells.length === 0) return;
 
-          const hexFillMesh = new THREE.InstancedMesh(hexFillGeometry, fillMaterial, layer.cells.length);
-          const hexBorderMesh = new THREE.InstancedMesh(hexBorderGeometry, borderMaterial, layer.cells.length);
+          if (layer.name === 'bases') {
+            // Handle bases separately due to multiple colors and geometries
+            const baseCellsByColor = [[], [], []];
+            layer.cells.forEach((cell: any) => {
+              if (cell.baseIndex >= 0 && cell.baseIndex < baseCellsByColor.length) {
+                baseCellsByColor[cell.baseIndex].push(cell);
+              }
+            });
 
-          layer.cells.forEach((cell: any, i: number) => {
-            dummy.position.copy(cell.position);
-            dummy.rotation.x = Math.PI;
-            dummy.updateMatrix();
-            hexFillMesh.setMatrixAt(i, dummy.matrix);
-            hexFillMesh.setColorAt(i, cell.color);
-            hexBorderMesh.setMatrixAt(i, dummy.matrix);
-            // Set border color
-            const borderColor = new THREE.Color();
-            borderColor.copy(cell.color);
-            if (this.borderColorFactor < 0) {
-              borderColor.lerp(new THREE.Color(0x000000), -this.borderColorFactor);
-            } else {
-              borderColor.lerp(new THREE.Color(0xffffff), this.borderColorFactor);
-            }
-            hexBorderMesh.setColorAt(i, borderColor);
-          });
+            baseCellsByColor.forEach((baseCells: any[], baseIndex: number) => {
+              if (baseCells.length === 0) return;
 
-          hexFillMesh.instanceMatrix.needsUpdate = true;
-          hexFillMesh.instanceColor.needsUpdate = true;
-          hexBorderMesh.instanceMatrix.needsUpdate = true;
-          hexBorderMesh.instanceColor.needsUpdate = true;
-          this.scene.add(hexFillMesh);
-          this.scene.add(hexBorderMesh);
+              const hexMesh = new THREE.InstancedMesh(baseHexGeometries[baseIndex] as THREE.BufferGeometry, material, baseCells.length);
+
+              baseCells.forEach((cell: any, i: number) => {
+                dummy.position.copy(cell.position);
+                dummy.rotation.x = Math.PI;
+                dummy.updateMatrix();
+                hexMesh.setMatrixAt(i, dummy.matrix);
+                hexMesh.setColorAt(i, cell.color);
+              });
+
+              hexMesh.instanceMatrix.needsUpdate = true;
+              hexMesh.instanceColor.needsUpdate = true;
+              this.scene.add(hexMesh);
+            });
+          } else {
+            const hexMesh = new THREE.InstancedMesh(layer.geometry as THREE.BufferGeometry, material, layer.cells.length);
+
+            layer.cells.forEach((cell: any, i: number) => {
+              dummy.position.copy(cell.position);
+              dummy.rotation.x = Math.PI;
+              dummy.updateMatrix();
+              hexMesh.setMatrixAt(i, dummy.matrix);
+              hexMesh.setColorAt(i, cell.color);
+            });
+
+            hexMesh.instanceMatrix.needsUpdate = true;
+            hexMesh.instanceColor.needsUpdate = true;
+            this.scene.add(hexMesh);
+          }
         });
       }
 
       updateGrid() {
         this.cellCount = this._calculateHexGridCellCount(this.gridRadius);
         this.scene.children
-          .filter(child => child instanceof THREE.InstancedMesh || child instanceof THREE.LineSegments)
+          .filter(child => child instanceof THREE.InstancedMesh)
           .forEach(child => {
             this.scene.remove(child);
             child.geometry.dispose();
