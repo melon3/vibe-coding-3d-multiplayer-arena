@@ -972,8 +972,7 @@ export const Player: React.FC<PlayerProps> = ({
           const scene = group.current?.parent; // Get scene reference
           if (isDebugArrowVisible && scene) { // Only proceed if prop is true and scene exists
             const playerWorldPos = group.current.position;
-            const playerWorldRotY = group.current.rotation.y; 
-            const forwardDirection = new THREE.Vector3(Math.sin(playerWorldRotY), 0, Math.cos(playerWorldRotY)).normalize();
+            const forwardDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(group.current.quaternion).normalize();
             const arrowLength = 3;
             const arrowColor = 0xff0000;
 
