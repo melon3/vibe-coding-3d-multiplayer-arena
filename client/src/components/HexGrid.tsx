@@ -49,6 +49,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
       pathColor: { r: number; g: number; b: number };
       baseColors: Array<{ r: number; g: number; b: number }>;
       mapColor: { r: number; g: number; b: number };
+      hexMeshes: THREE.InstancedMesh[] = []; // Store references to meshes
 
       constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -224,6 +225,18 @@ export const HexGrid: React.FC<HexGridProps> = ({
       }
 
       createHexGrid() {
+        // Clear existing meshes before creating new ones
+        this.hexMeshes.forEach(mesh => {
+          this.scene.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(mat => mat.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        });
+        this.hexMeshes = [];
+
         const size = 3;
         const radius = this.gridRadius;
 
@@ -369,6 +382,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
               hexMesh.instanceMatrix.needsUpdate = true;
               hexMesh.instanceColor.needsUpdate = true;
               this.scene.add(hexMesh);
+              this.hexMeshes.push(hexMesh); // Store reference
             });
           } else {
             const hexMesh = new THREE.InstancedMesh(layer.geometry as THREE.BufferGeometry, material, layer.cells.length);
@@ -384,20 +398,26 @@ export const HexGrid: React.FC<HexGridProps> = ({
             hexMesh.instanceMatrix.needsUpdate = true;
             hexMesh.instanceColor.needsUpdate = true;
             this.scene.add(hexMesh);
+            this.hexMeshes.push(hexMesh); // Store reference
           }
         });
       }
 
       updateGrid() {
-        this.cellCount = this._calculateHexGridCellCount(this.gridRadius);
-        this.scene.children
-          .filter(child => child instanceof THREE.InstancedMesh)
-          .forEach(child => {
-            this.scene.remove(child);
-            child.geometry.dispose();
-            child.material.dispose();
-          });
-        this.createHexGrid();
+        // Only update if grid parameters have changed significantly
+        if (this.gridRadius !== gridRadius || 
+            this.baseScaleFactor !== baseScaleFactor || 
+            this.pathScaleFactor !== pathScaleFactor || 
+            this.arenaScaleFactor !== arenaScaleFactor || 
+            this.borderColorFactor !== borderColorFactor) {
+          this.gridRadius = gridRadius;
+          this.baseScaleFactor = baseScaleFactor;
+          this.pathScaleFactor = pathScaleFactor;
+          this.arenaScaleFactor = arenaScaleFactor;
+          this.borderColorFactor = borderColorFactor;
+          this.cellCount = this._calculateHexGridCellCount(this.gridRadius);
+          this.createHexGrid();
+        }
       }
     }
 
@@ -406,10 +426,19 @@ export const HexGrid: React.FC<HexGridProps> = ({
 
     return () => {
       if (hexGridRef.current) {
-        hexGridRef.current.updateGrid();
+        // Clean up meshes on unmount
+        hexGridRef.current.hexMeshes.forEach(mesh => {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(mat => mat.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        });
       }
     };
-  }, [scene, gridRadius, baseScaleFactor, pathScaleFactor, arenaScaleFactor, borderColorFactor, mapColor, arenaColor, pathColor, baseColors]);
+  }, [scene, gridRadius, baseScaleFactor, pathScaleFactor, arenaScaleFactor, borderColorFactor, mapColor, arenaColor, pathColor, baseColors]); // Update on prop changes
 
   return null;
 }; 

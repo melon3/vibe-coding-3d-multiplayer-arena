@@ -871,19 +871,13 @@ export const Player: React.FC<PlayerProps> = ({
 
           // 2. RECONCILIATION (Position)
           const serverPosition = new THREE.Vector3(dataRef.current.position.x, dataRef.current.position.y, dataRef.current.position.z);
+          const serverPositionClone = serverPosition.clone();
 
-          // Compare local (unflipped) prediction with an unflipped version of the server state
-          const unflippedServerPosition = serverPosition.clone();
-          unflippedServerPosition.x *= -1; // Undo server flip for comparison
-          unflippedServerPosition.z *= -1; // Undo server flip for comparison
-
-          const positionError = localPositionRef.current.distanceTo(unflippedServerPosition);
+          const positionError = localPositionRef.current.distanceTo(serverPositionClone);
           
           if (positionError > POSITION_RECONCILE_THRESHOLD) {
-            // Temporarily disable LERP in orbital mode to test if reconciliation is the issue
-            if (cameraMode !== CAMERA_MODES.ORBITAL) {
-                localPositionRef.current.lerp(serverPosition, RECONCILE_LERP_FACTOR);
-            }
+              localPositionRef.current.lerp(serverPositionClone, RECONCILE_LERP_FACTOR);
+              // console.log(`[Player Frame ${playerData.username}] Position Error: ${positionError.toFixed(2)}`);
           }
 
           // 2.5 RECONCILIATION (Rotation) 
@@ -895,6 +889,7 @@ export const Player: React.FC<PlayerProps> = ({
           if (rotationError > ROTATION_RECONCILE_THRESHOLD) {
               currentQuat.slerp(reconcileTargetQuat, RECONCILE_LERP_FACTOR);
               localRotationRef.current.setFromQuaternion(currentQuat, 'YXZ');
+              // console.log(`[Player Frame ${playerData.username}] Rotation Error: ${rotationError.toFixed(2)}`);
           }
 
           // 3. Apply potentially reconciled predicted position AND reconciled local rotation directly to the model group

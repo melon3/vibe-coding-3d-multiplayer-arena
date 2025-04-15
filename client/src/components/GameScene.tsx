@@ -82,7 +82,7 @@ export const GameScene: React.FC<GameSceneProps> = ({
         {/* Add Sky component */}
         <Sky distance={450000} sunPosition={[5, 1, 8]} inclination={0} azimuth={0.25} />
         <PerformanceMonitor factor={1} onChange={({ factor }) => setDpr(Math.floor(0.5 + 1.5 * factor))} />
-        <Perf position="bottom-left" />
+        {isDebugPanelVisible && (<Perf position="bottom-left" />)}
 
         {/* Ambient light for general scene illumination */}
         <ambientLight intensity={0.5} />
@@ -107,9 +107,9 @@ export const GameScene: React.FC<GameSceneProps> = ({
         {/* Conditionally render Light and Shadow Camera Helpers */}
         {isDebugPanelVisible && directionalLightRef.current && (
           <>
-            <primitive object={new DirectionalLightHelper(directionalLightRef.current, 5)} />
+            {/* <primitive object={new DirectionalLightHelper(directionalLightRef.current, 5)} /> */}
             {/* Add CameraHelper for the shadow camera */}
-            <primitive object={new CameraHelper(directionalLightRef.current.shadow.camera)} /> 
+            {/* <primitive object={new CameraHelper(directionalLightRef.current.shadow.camera)} />  */}
           </>
         )}
 
