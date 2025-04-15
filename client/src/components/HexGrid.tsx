@@ -70,7 +70,10 @@ export const HexGrid: React.FC<HexGridProps> = ({
         const indices = [];
         const colors = [];
 
-        // Outer hex vertices (border)
+        // Thickness for the land effect (negative to extrude downward)
+        const thickness = 0.5;
+
+        // Outer hex vertices (border) - Top face
         for (let i = 0; i < 6; i++) {
           const angle = (i * 60 + 30) * Math.PI / 180;
           const x = size * Math.cos(angle);
@@ -79,8 +82,8 @@ export const HexGrid: React.FC<HexGridProps> = ({
           colors.push(borderColor.r, borderColor.g, borderColor.b);
         }
 
-        // Inner hex vertices (fill)
-        const innerSize = size * 0.99; // Reduced from 0.9 for sharper borders
+        // Inner hex vertices (fill) - Top face
+        const innerSize = size * 0.99;
         for (let i = 0; i < 6; i++) {
           const angle = (i * 60 + 30) * Math.PI / 180;
           const x = innerSize * Math.cos(angle);
@@ -89,16 +92,64 @@ export const HexGrid: React.FC<HexGridProps> = ({
           colors.push(1, 1, 1); // Fill color placeholder
         }
 
-        // Indices for border (outer to inner)
+        // Outer hex vertices (border) - Bottom face
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = size * Math.cos(angle);
+          const z = size * Math.sin(angle);
+          vertices.push(x, thickness, z);
+          colors.push(borderColor.r * 0.7, borderColor.g * 0.7, borderColor.b * 0.7); // Darker for depth
+        }
+
+        // Inner hex vertices (fill) - Bottom face
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * 60 + 30) * Math.PI / 180;
+          const x = innerSize * Math.cos(angle);
+          const z = innerSize * Math.sin(angle);
+          vertices.push(x, thickness, z);
+          colors.push(0.7, 0.7, 0.7); // Darker fill for depth
+        }
+
+        // Indices for top face border (outer to inner)
         for (let i = 0; i < 6; i++) {
           const next = (i + 1) % 6;
           indices.push(i, next, i + 6);
           indices.push(next, next + 6, i + 6);
         }
 
-        // Indices for inner hex fill
+        // Indices for top face inner hex fill
         for (let i = 1; i < 5; i++) {
           indices.push(6, 6 + i, 6 + ((i + 1) % 6));
+        }
+
+        // Indices for bottom face border (outer to inner)
+        for (let i = 0; i < 6; i++) {
+          const next = (i + 1) % 6;
+          const offset = 12; // Offset for bottom vertices
+          indices.push(offset + i, offset + next, offset + i + 6);
+          indices.push(offset + next, offset + next + 6, offset + i + 6);
+        }
+
+        // Indices for bottom face inner hex fill
+        for (let i = 1; i < 5; i++) {
+          indices.push(18, 18 + i, 18 + ((i + 1) % 6));
+        }
+
+        // Indices for sides to connect top and bottom faces (outer border)
+        for (let i = 0; i < 6; i++) {
+          const next = (i + 1) % 6;
+          const bottom = 12;
+          indices.push(i, next, i + bottom);
+          indices.push(next, next + bottom, i + bottom);
+        }
+
+        // Indices for inner sides (between inner top and bottom)
+        for (let i = 0; i < 6; i++) {
+          const next = (i + 1) % 6;
+          const innerTop = 6;
+          const innerBottom = 18;
+          indices.push(innerTop + i, innerTop + next, innerBottom + i);
+          indices.push(innerTop + next, innerBottom + next, innerBottom + i);
         }
 
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
@@ -266,7 +317,6 @@ export const HexGrid: React.FC<HexGridProps> = ({
         };
 
         const layers = [
-          { name: 'empty', color: gray, cells: [], geometry: grayHexGeometry },
           { name: 'paths', color: pathColor, cells: [], geometry: pathHexGeometry },
           { name: 'bases', color: baseColors, cells: [], geometry: baseHexGeometries },
           { name: 'arena', color: arenaColor, cells: [], geometry: arenaHexGeometry }
@@ -280,13 +330,11 @@ export const HexGrid: React.FC<HexGridProps> = ({
 
             const baseCheck = isInBase(q, r);
             if (baseCheck.isBase && baseCheck.baseIndex >= 0 && baseCheck.baseIndex < baseColors.length) {
-              layers[2].cells.push({ q, r, position, color: baseColors[baseCheck.baseIndex], baseIndex: baseCheck.baseIndex });
+              layers[1].cells.push({ q, r, position, color: baseColors[baseCheck.baseIndex], baseIndex: baseCheck.baseIndex });
             } else if (isInArena(q, r)) {
-              layers[3].cells.push({ q, r, position, color: arenaColor });
+              layers[2].cells.push({ q, r, position, color: arenaColor });
             } else if (isOnPath(q, r)) {
-              layers[1].cells.push({ q, r, position, color: pathColor });
-            } else {
-              layers[0].cells.push({ q, r, position, color: gray });
+              layers[0].cells.push({ q, r, position, color: pathColor });
             }
           }
         }
