@@ -70,7 +70,6 @@ const RECONCILE_LERP_FACTOR = 0.15;
 // --- Camera Constants ---
 const CAMERA_MODES = {
   FOLLOW: 'follow',  // Default camera following behind player
-  ORBITAL: 'orbital' // Orbital camera that rotates around the player
 };
 
 interface PlayerProps {
@@ -112,19 +111,6 @@ export const Player: React.FC<PlayerProps> = ({
   const zoomLevel = useRef(5);
   const targetZoom = useRef(5);
   
-  // Orbital camera variables
-  const [cameraMode, setCameraMode] = useState<string>(CAMERA_MODES.FOLLOW);
-  const orbitalCameraRef = useRef({
-    distance: 8,
-    height: 3,
-    angle: 0,
-    elevation: Math.PI / 6, // Approximately 30 degrees
-    autoRotate: false,
-    autoRotateSpeed: 0.5,
-    lastUpdateTime: Date.now(),
-    playerFacingRotation: 0 // Store player's facing direction when entering orbital mode
-  });
-  
   // Ref to track if animations have been loaded already to prevent multiple loading attempts
   const animationsLoadedRef = useRef(false);
   
@@ -138,8 +124,6 @@ export const Player: React.FC<PlayerProps> = ({
 
   // --- Client-Side Movement Calculation (Matches Server Logic *before* Sign Flip) ---
   const calculateClientMovement = useCallback((currentPos: THREE.Vector3, currentRot: THREE.Euler, inputState: InputState, delta: number): THREE.Vector3 => {
-    // console.log(`[Move Calc] cameraMode: ${cameraMode}`); // Suppressed log
-    
     // Skip if no movement input
     if (!inputState.forward && !inputState.backward && !inputState.left && !inputState.right) {
       return currentPos;
@@ -152,17 +136,10 @@ export const Player: React.FC<PlayerProps> = ({
     // 1. Calculate local movement vector based on WASD
     let localMoveX = 0;
     let localMoveZ = 0;
-    if (cameraMode === CAMERA_MODES.ORBITAL) {
-        if (inputState.forward) localMoveZ += 1;
-        if (inputState.backward) localMoveZ -= 1;
-        if (inputState.left) localMoveX += 1;
-        if (inputState.right) localMoveX -= 1;
-    } else {
-        if (inputState.forward) localMoveZ -= 1;
-        if (inputState.backward) localMoveZ += 1;
-        if (inputState.left) localMoveX -= 1;
-        if (inputState.right) localMoveX += 1;
-    }
+    if (inputState.forward) localMoveZ -= 1;
+    if (inputState.backward) localMoveZ += 1;
+    if (inputState.left) localMoveX -= 1;
+    if (inputState.right) localMoveX += 1;
     const localMoveVector = new THREE.Vector3(localMoveX, 0, localMoveZ);
 
     // Normalize if diagonal movement
@@ -170,15 +147,8 @@ export const Player: React.FC<PlayerProps> = ({
       localMoveVector.normalize();
     }
 
-    // 2. Determine which rotation to use based on camera mode
-    if (cameraMode === CAMERA_MODES.FOLLOW) {
-      // --- FOLLOW MODE: Use current player rotation ---
-      rotationYaw = currentRot.y;
-    } else {
-      // --- ORBITAL MODE: Use fixed rotation from when mode was entered ---
-      rotationYaw = orbitalCameraRef.current.playerFacingRotation;
-      console.log(`[Orbital Move Calc] Mode: ORBITAL, Using fixed yaw: ${rotationYaw.toFixed(3)}`);
-    }
+    // 2. Determine which rotation to use
+    rotationYaw = currentRot.y;
 
     // 3. Rotate the LOCAL movement vector by the appropriate YAW to get the WORLD direction
     worldMoveVector = localMoveVector.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationYaw);
@@ -190,13 +160,8 @@ export const Player: React.FC<PlayerProps> = ({
     // The server-side sign flip is handled during reconciliation, not prediction.
     const finalPosition = currentPos.clone().add(worldMoveVector);
 
-    // Debug log for orbital mode
-    if (cameraMode === CAMERA_MODES.ORBITAL) {
-        console.log(`[Orbital Move Calc] Input: F${inputState.forward?1:0} B${inputState.backward?1:0} L${inputState.left?1:0} R${inputState.right?1:0}, MoveVector: (${worldMoveVector.x.toFixed(2)}, ${worldMoveVector.z.toFixed(2)}), Delta: ${delta.toFixed(4)}`);
-    }
-
     return finalPosition;
-  }, [cameraMode]); // Depend on cameraMode from state
+  }, []); // No dependency on cameraMode anymore
 
   // --- Effect for model loading ---
   useEffect(() => {
@@ -680,53 +645,28 @@ export const Player: React.FC<PlayerProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isPointerLocked.current || !isLocalPlayer) return;
       
-      if (cameraMode === CAMERA_MODES.FOLLOW) {
-        // Update LOCAL rotation ref based on mouse movement for player rotation
-        const sensitivity = 0.003;
-        localRotationRef.current.y -= e.movementX * sensitivity;
-        
-        // Keep angle within [-PI, PI] for consistency
-        localRotationRef.current.y = THREE.MathUtils.euclideanModulo(localRotationRef.current.y + Math.PI, 2 * Math.PI) - Math.PI;
+      // Update LOCAL rotation ref based on mouse movement for player rotation
+      const sensitivity = 0.003;
+      localRotationRef.current.y -= e.movementX * sensitivity;
+      
+      // Keep angle within [-PI, PI] for consistency
+      localRotationRef.current.y = THREE.MathUtils.euclideanModulo(localRotationRef.current.y + Math.PI, 2 * Math.PI) - Math.PI;
 
-        // Call the rotation change callback if provided (using local ref)
-        if (onRotationChange) {
-          onRotationChange(localRotationRef.current);
-        }
-      } else if (cameraMode === CAMERA_MODES.ORBITAL) {
-        // In orbital mode, mouse movement controls the camera angle around the player
-        const orbital = orbitalCameraRef.current;
-        const sensitivity = 0.005;
-        
-        // X movement rotates camera around player
-        orbital.angle -= e.movementX * sensitivity;
-        
-        // Y movement controls camera elevation/height
-        orbital.elevation += e.movementY * sensitivity;
-        
-        // Clamp elevation between reasonable limits (15° to 85°)
-        orbital.elevation = Math.max(Math.PI / 12, Math.min(Math.PI / 2.1, orbital.elevation));
+      // Call the rotation change callback if provided (using local ref)
+      if (onRotationChange) {
+        onRotationChange(localRotationRef.current);
       }
     };
     
     const handleMouseWheel = (e: WheelEvent) => {
       if (!isLocalPlayer) return;
       
-      if (cameraMode === CAMERA_MODES.FOLLOW) {
-        // Follow camera zoom
-        const zoomSpeed = 0.8; // Match legacy zoom speed
-        const zoomChange = Math.sign(e.deltaY) * zoomSpeed;
-        const minZoom = 2.0; // Closest zoom
-        const maxZoom = 12.0; // Furthest zoom allowed
-        targetZoom.current = Math.max(minZoom, Math.min(maxZoom, zoomLevel.current + zoomChange));
-      } else if (cameraMode === CAMERA_MODES.ORBITAL) {
-        // Orbital camera zoom
-        const orbital = orbitalCameraRef.current;
-        const zoomSpeed = 0.5;
-        const zoomChange = Math.sign(e.deltaY) * zoomSpeed;
-        
-        // Adjust orbital distance
-        orbital.distance = Math.max(3, Math.min(20, orbital.distance + zoomChange));
-      }
+      // Follow camera zoom
+      const zoomSpeed = 0.8; // Match legacy zoom speed
+      const zoomChange = Math.sign(e.deltaY) * zoomSpeed;
+      const minZoom = 2.0; // Closest zoom
+      const maxZoom = 12.0; // Furthest zoom allowed
+      targetZoom.current = Math.max(minZoom, Math.min(maxZoom, zoomLevel.current + zoomChange));
     };
     
     // Request pointer lock on click
@@ -747,7 +687,7 @@ export const Player: React.FC<PlayerProps> = ({
       document.removeEventListener('wheel', handleMouseWheel);
       document.removeEventListener('click', handleCanvasClick);
     };
-  }, [isLocalPlayer, onRotationChange, cameraMode]);
+  }, [isLocalPlayer, onRotationChange]);
 
   // Handle one-time animation completion
   useEffect(() => {
@@ -790,47 +730,7 @@ export const Player: React.FC<PlayerProps> = ({
     }
   }, [currentAnimation, animations, mixer, playAnimation]); // Ensure all dependencies are listed
 
-  // --- Handle Camera Toggle ---
-  const toggleCameraMode = useCallback(() => {
-    const newMode = cameraMode === CAMERA_MODES.FOLLOW ? CAMERA_MODES.ORBITAL : CAMERA_MODES.FOLLOW;
-    setCameraMode(newMode);
-    
-    // Store player's facing direction when entering orbital mode
-    if (newMode === CAMERA_MODES.ORBITAL) {
-      // Use the current reconciled rotation from the ref
-      orbitalCameraRef.current.playerFacingRotation = localRotationRef.current.y;
-      console.log(`[Orbital Toggle] Storing playerFacingRotation: ${orbitalCameraRef.current.playerFacingRotation.toFixed(3)}`); // DEBUG
-      // Set the initial orbital angle to match the player's facing direction
-      orbitalCameraRef.current.angle = localRotationRef.current.y;
-      // Reset elevation to a default value for a consistent starting view
-      orbitalCameraRef.current.elevation = Math.PI / 6; 
-      
-      // Log the stored rotation for debugging
-      console.log(`Entering orbital mode. Stored player rotation: ${(localRotationRef.current.y * (180/Math.PI)).toFixed(2)}°`);
-    }
-    
-    console.log(`Camera mode toggled to: ${newMode}`);
-  }, [cameraMode]); // localRotationRef is not a state/prop, so not needed here
-
-  // Set up keyboard handlers for camera toggling
-  useEffect(() => {
-    if (!isLocalPlayer) return;
-    
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Toggle camera mode on 'C' key press
-      if (event.code === 'KeyC' && !event.repeat) { // Check for !event.repeat
-        toggleCameraMode();
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isLocalPlayer, toggleCameraMode]);
-
-  // Update the useFrame hook to handle both camera modes and reconciliation
+  // Update the useFrame hook to handle camera and reconciliation
   useFrame((state, delta) => {
     {
       const dt = Math.min(delta, 1 / 30);
@@ -841,13 +741,6 @@ export const Player: React.FC<PlayerProps> = ({
         const groupWorldPos = new THREE.Vector3();
         pointLightRef.current.getWorldPosition(lightWorldPos);
         group.current.getWorldPosition(groupWorldPos);
-
-        /*if (pointLightRef.current.parent !== group.current) {
-          console.error(`[Player Frame ${playerData.username}] Light parent mismatch!`);
-        } else {
-          // Log world positions for comparison
-          console.log(`[Player Frame ${playerData.username}] Group World: (${groupWorldPos.x.toFixed(2)}, ${groupWorldPos.y.toFixed(2)}, ${groupWorldPos.z.toFixed(2)}), Light World: (${lightWorldPos.x.toFixed(2)}, ${lightWorldPos.y.toFixed(2)}, ${lightWorldPos.z.toFixed(2)})`);
-        }*/
       }
       // --- END LOG --- 
 
@@ -863,7 +756,7 @@ export const Player: React.FC<PlayerProps> = ({
           // 1. Calculate predicted position based on current input, rotation, and SERVER_TICK_DELTA
           const predictedPosition = calculateClientMovement(
             localPositionRef.current,
-            localRotationRef.current, // Pass current local rotation; function internally selects based on mode
+            localRotationRef.current, // Pass current local rotation
             currentInput,
             SERVER_TICK_DELTA // Use FIXED delta for prediction to match server
           );
@@ -897,63 +790,28 @@ export const Player: React.FC<PlayerProps> = ({
           // --- Visual Rotation Logic --- 
           let targetVisualYaw = localRotationRef.current.y; // Default: Face camera/mouse direction
 
-          if (cameraMode === CAMERA_MODES.FOLLOW) {
-              const { forward, backward, left, right } = currentInput;
-              const isMovingDiagonally = (forward || backward) && (left || right);
+          const { forward, backward, left, right } = currentInput;
+          const isMovingDiagonally = (forward || backward) && (left || right);
 
-              if (isMovingDiagonally) {
-                  let localMoveX = 0;
-                  let localMoveZ = 0;
-                  if (forward) localMoveZ -= 1;
-                  if (backward) localMoveZ += 1;
-                  if (left) localMoveX -= 1;
-                  if (right) localMoveX += 1;
-                  const localMoveVector = new THREE.Vector3(localMoveX, 0, localMoveZ).normalize(); 
-                  const cameraYaw = localRotationRef.current.y;
-                  const worldMoveDirection = localMoveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+          if (isMovingDiagonally) {
+              let localMoveX = 0;
+              let localMoveZ = 0;
+              if (forward) localMoveZ -= 1;
+              if (backward) localMoveZ += 1;
+              if (left) localMoveX -= 1;
+              if (right) localMoveX += 1;
+              const localMoveVector = new THREE.Vector3(localMoveX, 0, localMoveZ).normalize(); 
+              const cameraYaw = localRotationRef.current.y;
+              const worldMoveDirection = localMoveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
 
-                  // Calculate the base target yaw
-                  targetVisualYaw = Math.atan2(worldMoveDirection.x, worldMoveDirection.z);
+              // Calculate the base target yaw
+              targetVisualYaw = Math.atan2(worldMoveDirection.x, worldMoveDirection.z);
 
-                  // --- Reverse yaw ONLY for FORWARD diagonal movement ---
-                  if (forward && !backward) { // Check if primary movement is forward
-                      targetVisualYaw += Math.PI; // Add 180 degrees
-                  }
-                  // --- End reversal --- 
+              // --- Reverse yaw ONLY for FORWARD diagonal movement ---
+              if (forward && !backward) { // Check if primary movement is forward
+                  targetVisualYaw += Math.PI; // Add 180 degrees
               }
-          } else { // ORBITAL MODE
-              // --- Apply diagonal rotation logic similar to FOLLOW mode --- 
-              const { forward, backward, left, right } = currentInput;
-              const isMovingDiagonally = (forward || backward) && (left || right);
-
-              if (isMovingDiagonally) {
-                  // Calculate local movement vector (Orbital mapping: W=+z, S=-z, A=+x, D=-x)
-                  let localMoveX = 0;
-                  let localMoveZ = 0;
-                  if (forward) localMoveZ += 1;
-                  if (backward) localMoveZ -= 1; // Corrected backward direction for orbital local
-                  if (left) localMoveX += 1; // Corrected left direction for orbital local
-                  if (right) localMoveX -= 1; // Corrected right direction for orbital local
-                  const localMoveVector = new THREE.Vector3(localMoveX, 0, localMoveZ).normalize();
-
-                  // Rotate local movement by the FIXED orbital yaw to get world direction
-                  const fixedOrbitalYaw = orbitalCameraRef.current.playerFacingRotation;
-                  const worldMoveDirection = localMoveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), fixedOrbitalYaw);
-
-                  // Calculate base target yaw
-                  targetVisualYaw = Math.atan2(worldMoveDirection.x, worldMoveDirection.z);
-
-                  // --- RE-ADD Condition: Reverse yaw ONLY for FORWARD diagonal movement --- 
-                  if (!forward && backward) { 
-                      targetVisualYaw += Math.PI; // Add 180 degrees
-                  }
-                  // --- End conditional reversal --- 
-                  
-              } else {
-                   // If not moving diagonally, face the fixed rotation
-                   targetVisualYaw = orbitalCameraRef.current.playerFacingRotation;
-              }
-              // --- End diagonal rotation logic for ORBITAL ---
+              // --- End reversal --- 
           }
 
           // --- Apply Rotation using Slerp --- 
@@ -1024,59 +882,32 @@ export const Player: React.FC<PlayerProps> = ({
       // --- CAMERA UPDATE (Local Player Only) ---
       if (isLocalPlayer && group.current) {
         // Smooth zoom interpolation for follow camera
-        if (cameraMode === CAMERA_MODES.FOLLOW) {
-          zoomLevel.current += (targetZoom.current - zoomLevel.current) * Math.min(1, dt * 6);
-        }
+        zoomLevel.current += (targetZoom.current - zoomLevel.current) * Math.min(1, dt * 6);
 
         // Get reconciled player position and rotation for camera
         const playerPosition = localPositionRef.current; 
         // Use the reconciled localRotationRef for camera calculations
         const playerRotationY = localRotationRef.current.y; 
 
-        if (cameraMode === CAMERA_MODES.FOLLOW) {
-          // --- FOLLOW CAMERA MODE --- 
-          const cameraHeight = 2.5;
-          const currentDistance = zoomLevel.current;
+        // --- FOLLOW CAMERA MODE --- 
+        const cameraHeight = 2.5;
+        const currentDistance = zoomLevel.current;
 
-          // Calculate camera position based on player rotation and distance
-          const targetPosition = new THREE.Vector3(
-            playerPosition.x - Math.sin(playerRotationY) * currentDistance,
-            playerPosition.y + cameraHeight,
-            playerPosition.z - Math.cos(playerRotationY) * currentDistance 
-          );
+        // Calculate camera position based on player rotation and distance
+        const targetPosition = new THREE.Vector3(
+          playerPosition.x - Math.sin(playerRotationY) * currentDistance,
+          playerPosition.y + cameraHeight,
+          playerPosition.z - Math.cos(playerRotationY) * currentDistance 
+        );
 
-          // Smoothly move camera towards the target position
-          const cameraDamping = 12;
-          camera.position.lerp(targetPosition, Math.min(1, dt * cameraDamping));
+        // Smoothly move camera towards the target position
+        const cameraDamping = 12;
+        camera.position.lerp(targetPosition, Math.min(1, dt * cameraDamping));
 
-          // Make camera look at a point slightly above the player's base
-          const lookHeight = 1.8;
-          const lookTarget = playerPosition.clone().add(new THREE.Vector3(0, lookHeight, 0));
-          camera.lookAt(lookTarget);
-        } else if (cameraMode === CAMERA_MODES.ORBITAL) {
-          // --- ORBITAL CAMERA MODE ---
-          const orbital = orbitalCameraRef.current;
-          
-          // Calculate orbital camera position using spherical coordinates
-          const horizontalDistance = orbital.distance * Math.cos(orbital.elevation);
-          const height = orbital.distance * Math.sin(orbital.elevation);
-          
-          // Use orbital.angle for camera rotation, playerPosition for center
-          const orbitX = playerPosition.x + Math.sin(orbital.angle) * horizontalDistance;
-          const orbitY = playerPosition.y + height;
-          const orbitZ = playerPosition.z + Math.cos(orbital.angle) * horizontalDistance;
-          
-          // Set camera position based on orbital calculations
-          const targetPosition = new THREE.Vector3(orbitX, orbitY, orbitZ);
-          
-          // Smoothly move camera
-          const cameraDamping = 8; // Responsive but still smooth
-          camera.position.lerp(targetPosition, Math.min(1, dt * cameraDamping));
-          
-          // Look at player
-          const lookTarget = playerPosition.clone().add(new THREE.Vector3(0, 1.5, 0)); 
-          camera.lookAt(lookTarget);
-        }
+        // Make camera look at a point slightly above the player's base
+        const lookHeight = 1.8;
+        const lookTarget = playerPosition.clone().add(new THREE.Vector3(0, lookHeight, 0));
+        camera.lookAt(lookTarget);
       }
 
       // --- Update Animation Mixer ---
