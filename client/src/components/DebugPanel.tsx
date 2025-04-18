@@ -18,7 +18,6 @@
  * - playerMap: Collection of all players in the current session
  * - expanded: Controls panel expansion state (collapsed/expanded)
  * - onToggleExpanded: Callback to toggle expansion state
- * - isPointerLocked: Indicates if mouse input is captured for game controls
  * 
  * Technical implementation:
  * - Implements collapsible UI sections for information organization
@@ -44,7 +43,6 @@ interface DebugPanelProps {
   playerMap: ReadonlyMap<string, PlayerData>; // Pass the whole map
   expanded: boolean; // Receive expansion state from parent
   onToggleExpanded: () => void; // Receive toggle function from parent
-  isPointerLocked: boolean; // Receive pointer lock state from parent
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({ 
@@ -54,7 +52,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   playerMap,
   expanded,         // Use prop
   onToggleExpanded, // Use prop
-  isPointerLocked,  // Use prop
 }) => {
   const [modelCheckActive, setModelCheckActive] = useState(false);
   const [modelCheckResults, setModelCheckResults] = useState<string[]>([]);
@@ -125,29 +122,22 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       className="debug-panel" 
       onClick={handlePanelClick}
       style={{ 
-      position: 'absolute', 
-      top: '10px', 
-      left: '10px',
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      color: 'white',
-      padding: '10px',
-      borderRadius: '5px',
-      maxWidth: expanded ? '500px' : '300px',
-      zIndex: 1000
-    }}>
+        position: 'absolute', 
+        top: '10px', 
+        left: '10px',
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        color: 'white',
+        padding: '10px',
+        borderRadius: '5px',
+        maxWidth: expanded ? '500px' : '300px',
+        zIndex: 1000
+      }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
         <h3 style={{ margin: 0 }}>Debug Panel</h3>
         <button onClick={onToggleExpanded} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
           {expanded ? '▲' : '▼'}
         </button>
       </div>
-      
-      {/* Display message when pointer is locked */} 
-      {isPointerLocked && (
-        <div style={{ color: '#ffcc00', fontSize: '10px', marginBottom: '5px' }}>
-          (Press ESC to unlock mouse)
-        </div>
-      )}
       
       <div>
         <strong>Status:</strong> {statusMessage}
@@ -210,8 +200,8 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                 <li>WASD: Movement</li>
                 <li>Shift: Sprint</li>
                 <li>Space: Jump</li>
-                <li>Left Click: Attack</li>
-                <li>Mouse: Look around</li>
+                <li>Left Click: Attack/Cast Spell</li>
+                <li>Right Click: Defense</li>
                 <li>Mouse Wheel: Zoom</li>
               </ul>
             </div>

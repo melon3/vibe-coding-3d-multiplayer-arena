@@ -108,8 +108,8 @@ export const Player: React.FC<PlayerProps> = ({
   
   // Camera control variables
   const isPointerLocked = useRef(false);
-  const zoomLevel = useRef(5);
-  const targetZoom = useRef(5);
+  const zoomLevel = useRef(10); // Increased default zoom for overhead view
+  const targetZoom = useRef(10);
   
   // Ref to track if animations have been loaded already to prevent multiple loading attempts
   const animationsLoadedRef = useRef(false);
@@ -619,75 +619,27 @@ export const Player: React.FC<PlayerProps> = ({
     }
   }, [model]); // Run this effect whenever the model state changes
 
-  // --- Server State Reconciliation --- -> Now handled within useFrame
-  // useEffect(() => {
-  //   if (!isLocalPlayer || !modelLoaded) return; 
-
-  //   // Update internal ref used by useFrame
-  //   dataRef.current = playerData;
-
-  // }, [playerData, isLocalPlayer, modelLoaded]);
-
   // Set up pointer lock for camera control if local player
   useEffect(() => {
     if (!isLocalPlayer) return;
     
-    const handlePointerLockChange = () => {
-      isPointerLocked.current = document.pointerLockElement === document.body;
-      // Add cursor style changes to match legacy implementation
-      if (isPointerLocked.current) {
-        document.body.classList.add('cursor-locked');
-      } else {
-        document.body.classList.remove('cursor-locked');
-      }
-    };
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isPointerLocked.current || !isLocalPlayer) return;
-      
-      // Update LOCAL rotation ref based on mouse movement for player rotation
-      const sensitivity = 0.003;
-      localRotationRef.current.y -= e.movementX * sensitivity;
-      
-      // Keep angle within [-PI, PI] for consistency
-      localRotationRef.current.y = THREE.MathUtils.euclideanModulo(localRotationRef.current.y + Math.PI, 2 * Math.PI) - Math.PI;
-
-      // Call the rotation change callback if provided (using local ref)
-      if (onRotationChange) {
-        onRotationChange(localRotationRef.current);
-      }
-    };
-    
     const handleMouseWheel = (e: WheelEvent) => {
-      if (!isLocalPlayer) return;
-      
-      // Follow camera zoom
-      const zoomSpeed = 0.8; // Match legacy zoom speed
-      const zoomChange = Math.sign(e.deltaY) * zoomSpeed;
-      const minZoom = 2.0; // Closest zoom
-      const maxZoom = 12.0; // Furthest zoom allowed
-      targetZoom.current = Math.max(minZoom, Math.min(maxZoom, zoomLevel.current + zoomChange));
+        if (!isLocalPlayer) return;
+        
+        // Follow camera zoom
+        const zoomSpeed = 5.0; // Increased for faster zooming
+        const zoomChange = Math.sign(e.deltaY) * zoomSpeed;
+        const minZoom = 5.0; // Closest zoom
+        const maxZoom = 20.0; // Furthest zoom allowed
+        targetZoom.current = Math.max(minZoom, Math.min(maxZoom, zoomLevel.current + zoomChange));
     };
     
-    // Request pointer lock on click
-    const handleCanvasClick = () => {
-      if (!isPointerLocked.current) {
-        document.body.requestPointerLock();
-      }
-    };
-    
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
-    document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('wheel', handleMouseWheel);
-    document.addEventListener('click', handleCanvasClick);
     
     return () => {
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('wheel', handleMouseWheel);
-      document.removeEventListener('click', handleCanvasClick);
+        document.removeEventListener('wheel', handleMouseWheel);
     };
-  }, [isLocalPlayer, onRotationChange]);
+  }, [isLocalPlayer]);
 
   // Handle one-time animation completion
   useEffect(() => {
@@ -788,12 +740,12 @@ export const Player: React.FC<PlayerProps> = ({
           // 3. Apply potentially reconciled predicted position AND reconciled local rotation directly to the model group
           group.current.position.copy(localPositionRef.current);
           // --- Visual Rotation Logic --- 
-          let targetVisualYaw = localRotationRef.current.y; // Default: Face camera/mouse direction
+          let targetVisualYaw = localRotationRef.current.y; // Default: Face movement direction
 
           const { forward, backward, left, right } = currentInput;
-          const isMovingDiagonally = (forward || backward) && (left || right);
+          const isMoving = forward || backward || left || right;
 
-          if (isMovingDiagonally) {
+          if (isMoving) {
               let localMoveX = 0;
               let localMoveZ = 0;
               if (forward) localMoveZ -= 1;
@@ -804,14 +756,8 @@ export const Player: React.FC<PlayerProps> = ({
               const cameraYaw = localRotationRef.current.y;
               const worldMoveDirection = localMoveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
 
-              // Calculate the base target yaw
+              // Calculate the target yaw based on movement direction
               targetVisualYaw = Math.atan2(worldMoveDirection.x, worldMoveDirection.z);
-
-              // --- Reverse yaw ONLY for FORWARD diagonal movement ---
-              if (forward && !backward) { // Check if primary movement is forward
-                  targetVisualYaw += Math.PI; // Add 180 degrees
-              }
-              // --- End reversal --- 
           }
 
           // --- Apply Rotation using Slerp --- 
@@ -884,29 +830,24 @@ export const Player: React.FC<PlayerProps> = ({
         // Smooth zoom interpolation for follow camera
         zoomLevel.current += (targetZoom.current - zoomLevel.current) * Math.min(1, dt * 6);
 
-        // Get reconciled player position and rotation for camera
+        // Get reconciled player position for camera
         const playerPosition = localPositionRef.current; 
-        // Use the reconciled localRotationRef for camera calculations
-        const playerRotationY = localRotationRef.current.y; 
 
-        // --- FOLLOW CAMERA MODE --- 
-        const cameraHeight = 2.5;
-        const currentDistance = zoomLevel.current;
-
-        // Calculate camera position based on player rotation and distance
+        // --- FIXED OVERHEAD CAMERA MODE --- 
+        const cameraHeight = zoomLevel.current;
+        const zOffset = 0.75 * zoomLevel.current; // Reduced scaling factor for lower angle
         const targetPosition = new THREE.Vector3(
-          playerPosition.x - Math.sin(playerRotationY) * currentDistance,
+          playerPosition.x,
           playerPosition.y + cameraHeight,
-          playerPosition.z - Math.cos(playerRotationY) * currentDistance 
+          playerPosition.z + zOffset // Offset scales with zoom to keep consistent angle
         );
 
         // Smoothly move camera towards the target position
         const cameraDamping = 12;
         camera.position.lerp(targetPosition, Math.min(1, dt * cameraDamping));
 
-        // Make camera look at a point slightly above the player's base
-        const lookHeight = 1.8;
-        const lookTarget = playerPosition.clone().add(new THREE.Vector3(0, lookHeight, 0));
+        // Make camera look at the player
+        const lookTarget = playerPosition.clone().add(new THREE.Vector3(0, 1.8, 0));
         camera.lookAt(lookTarget);
       }
 
@@ -928,26 +869,39 @@ export const Player: React.FC<PlayerProps> = ({
 
       const serverAnim = playerData.currentAnimation;
 
+      // For local player, override animation to be forward based on movement
+      let finalAnim = serverAnim;
+      if (isLocalPlayer && currentInput) {
+        const isMoving = currentInput.forward || currentInput.backward || currentInput.left || currentInput.right;
+        if (isMoving) {
+          if (currentInput.sprint && animations[ANIMATIONS.RUN_FORWARD]) {
+            finalAnim = ANIMATIONS.RUN_FORWARD;
+          } else if (animations[ANIMATIONS.WALK_FORWARD]) {
+            finalAnim = ANIMATIONS.WALK_FORWARD;
+          }
+        }
+      }
+
       // console.log(`[Anim Check] Received ServerAnim: ${serverAnim}, Current LocalAnim: ${currentAnimation}, Is Available: ${!!animations[serverAnim]}`);
 
       // Play animation if it's different and available
-      if (serverAnim && serverAnim !== currentAnimation && animations[serverAnim]) {
-         // console.log(`[Anim Play] Server requested animation change to: ${serverAnim}`);
+      if (finalAnim && finalAnim !== currentAnimation && animations[finalAnim]) {
+         // console.log(`[Anim Play] Server requested animation change to: ${finalAnim}`);
         try {
-          playAnimation(serverAnim, 0.2);
+          playAnimation(finalAnim, 0.2);
         } catch (error) {
-          console.error(`[Anim Error] Error playing animation ${serverAnim}:`, error);
+          console.error(`[Anim Error] Error playing animation ${finalAnim}:`, error);
           // Attempt to fallback to idle if error occurs and not already idle
           if (animations['idle'] && currentAnimation !== 'idle') {
             playAnimation('idle', 0.2);
           }
         }
-      } else if (serverAnim && !animations[serverAnim]) {
+      } else if (finalAnim && !animations[finalAnim]) {
          // Log if server requests an animation we don't have loaded
-         // console.warn(`[Anim Warn] Server requested unavailable animation: ${serverAnim}. Available: ${Object.keys(animations).join(', ')}`);
+         // console.warn(`[Anim Warn] Server requested unavailable animation: ${finalAnim}. Available: ${Object.keys(animations).join(', ')}`);
       }
     }
-  }, [playerData.currentAnimation, animations, mixer, playAnimation, currentAnimation]); // Dependencies include things that trigger animation changes
+  }, [playerData.currentAnimation, animations, mixer, playAnimation, currentAnimation, isLocalPlayer, currentInput]); // Dependencies include things that trigger animation changes
 
   return (
     <group ref={group} castShadow>

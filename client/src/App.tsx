@@ -68,7 +68,6 @@ function App() {
   const [localPlayer, setLocalPlayer] = useState<PlayerData | null>(null);
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [isDebugPanelExpanded, setIsDebugPanelExpanded] = useState(false);
-  const [isPointerLocked, setIsPointerLocked] = useState(false); // State for pointer lock status
 
   // --- Ref for current input state ---
   const currentInputRef = useRef<InputState>({
@@ -268,40 +267,28 @@ function App() {
 
   const handleMouseDown = useCallback((event: MouseEvent) => {
       if (event.button === 0) { 
-           if (!currentInputRef.current.attack) {
-               currentInputRef.current.attack = true;
-           }
+          if (!currentInputRef.current.attack) {
+              currentInputRef.current.attack = true;
+              currentInputRef.current.castSpell = true; // Left click for attack and casting spell
+          }
+      } else if (event.button === 2) { // Right-click for defense
+          // Implement defense logic here if needed, for now we'll just log
+          console.log("Right click for defense action");
+          // You can add a defense state to InputState if needed
       }
   }, []);
 
   const handleMouseUp = useCallback((event: MouseEvent) => {
       if (event.button === 0) { 
-           if (currentInputRef.current.attack) {
-               currentInputRef.current.attack = false;
-           }
+          if (currentInputRef.current.attack) {
+              currentInputRef.current.attack = false;
+              currentInputRef.current.castSpell = false; // Left click for attack and casting spell
+          }
+      } else if (event.button === 2) { // Right-click for defense
+          // Implement defense logic here if needed, for now we'll just log
+          console.log("Right click defense action ended");
+          // You can add a defense state to InputState if needed
       }
-  }, []);
-
-  // Add mouse move handler with pointer lock for rotation
-  const handleMouseMove = useCallback((event: MouseEvent) => {
-    // Only rotate if we have pointer lock
-    if (document.pointerLockElement === document.body) {
-      const sensitivity = 0.002;
-      // Update the Euler rotation with mouse movement
-      playerRotationRef.current.y -= event.movementX * sensitivity;
-      
-      // Clamp vertical rotation (looking up/down) to prevent flipping
-      playerRotationRef.current.x = Math.max(
-        -Math.PI / 2.5, 
-        Math.min(Math.PI / 2.5, playerRotationRef.current.x - event.movementY * sensitivity)
-      );
-    }
-  }, []);
-
-  // --- Listener Setup/Removal Functions ---
-  const handlePointerLockChange = useCallback(() => {
-    setIsPointerLocked(document.pointerLockElement === document.body);
-    console.log("Pointer Lock Changed: ", document.pointerLockElement === document.body);
   }, []);
 
   const setupInputListeners = useCallback(() => {
@@ -309,20 +296,16 @@ function App() {
       window.addEventListener('keyup', handleKeyUp);
       window.addEventListener('mousedown', handleMouseDown);
       window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('mousemove', handleMouseMove); // Add mouse move listener
-      document.addEventListener('pointerlockchange', handlePointerLockChange); // Listen for lock changes
       console.log("Input listeners added.");
-  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handlePointerLockChange]);
+  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp]);
 
   const removeInputListeners = useCallback(() => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('mousemove', handleMouseMove); // Remove mouse move listener
-      document.removeEventListener('pointerlockchange', handlePointerLockChange); // Remove listener
       console.log("Input listeners removed.");
-  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp, handleMouseMove, handlePointerLockChange]);
+  }, [handleKeyDown, handleKeyUp, handleMouseDown, handleMouseUp]);
 
   const setupDelegatedListeners = useCallback(() => {
       document.body.addEventListener('click', handleDelegatedClick, true);
@@ -444,7 +427,6 @@ function App() {
             playerMap={players}
             expanded={isDebugPanelExpanded}
             onToggleExpanded={() => setIsDebugPanelExpanded((prev: boolean) => !prev)}
-            isPointerLocked={isPointerLocked} // Pass pointer lock state down
           />
       )}
 
