@@ -33,7 +33,6 @@
 import React, { useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Box, Plane, Grid, Sky, PerformanceMonitor } from '@react-three/drei';
-import { Perf } from 'r3f-perf'
 import * as THREE from 'three';
 import { DirectionalLightHelper, CameraHelper } from 'three'; // Import the helper
 // Import generated types
@@ -81,8 +80,6 @@ export const GameScene: React.FC<GameSceneProps> = ({
         
         {/* Add Sky component */}
         <Sky distance={450000} sunPosition={[5, 1, 8]} inclination={0} azimuth={0.25} />
-        <PerformanceMonitor factor={1} onChange={({ factor }) => setDpr(Math.floor(0.5 + 1.5 * factor))} />
-        {isDebugPanelVisible && (<Perf position="bottom-left" />)}
 
         {/* Ambient light for general scene illumination */}
         <ambientLight intensity={0.5} />

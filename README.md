@@ -32,8 +32,8 @@ A lightweight 3D web-based multiplayer starter kit using Three.js, React, and Sp
 First, clone the repository:
 
 ```bash
-git clone https://github.com/majidmanzarpour/vibe-coding-starter-pack-3d-multiplayer
-cd vibe-coding-starter-pack-3d-multiplayer
+git clone https://github.com/melon3/vibe-coding-3d-multiplayer-arena.git
+cd vibe-coding-3d-multiplayer-arena
 ```
 
 Then run the quick start script to set up everything automatically:
@@ -86,7 +86,7 @@ Run both client and server in development mode:
 cd server
 spacetime build
 spacetime start
-spacetime publish vibe-multiplayer
+spacetime publish vibe-arena
 
 # Terminal 2: Run the client
 cd client
